@@ -1,0 +1,40 @@
+name: pangeo
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.6
+  - pip
+  - numpy
+  - scipy
+  - pandas
+  - bottleneck
+  - netcdf4
+  - h5netcdf
+  # visualization
+  - matplotlib=2
+  - cartopy
+  - seaborn
+  - bokeh
+  # notebooks and things
+  - jupyter
+  - jupyterlab
+  - jupyter_dashboards
+  - ipywidgets
+  - notebook
+# misc
+  - click
+  - cloudpickle
+  - msgpack-python
+  - psutil
+  - six
+  - sortedcontainers
+  - tblib
+  - toolz
+  - tornado
+  - zict
+  - pip:
+    - pytest-cov
+    - git+https://github.com/dask/dask.git
+    - git+https://github.com/dask/distributed.git
+    - git+https://github.com/pydata/xarray.git
