@@ -18,12 +18,12 @@ for var in VIC forc; do
         rmoted=ftp://gdo-dcp.ucllnl.org/pub/dcp/archive/cmip5/hydro/BCSD_${tres}_${var}_nc
 
         mkdir -p $locald
-       #  if [[ $var != "forc" ]]; then
-		#   continue
-	   # fi
-       #  if [[ $tres != "mon" ]]; then
-		#   continue
-		# fi
+        if [[ $var != "VIC" ]]; then
+		  continue
+	   fi
+        if [[ $tres != "mon" ]]; then
+		  continue
+		fi
         for s in $scenario_lines; do
           /usr/bin/wget -nc -P ${locald} -r -nH --cut-dirs=6 --no-parent --reject="index.html*" ${rmoted}/${s}/ &
 
