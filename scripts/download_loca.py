@@ -36,7 +36,9 @@ variables = ['runoff', 'baseflow', 'SWE', 'ET', 'windspeed',
               default=1)
 @click.option('--remap_to', default=False)
 @click.option('-v', '--verbose', count=True)
-def main(kind, n_jobs, remap_to, verbose):
+@click.option('--quick', is_flag=True,
+              help='skip the full QC check of existing files')
+def main(kind, n_jobs, remap_to, verbose, quick):
     for k, func in [('vic', main_vic), ('met', main_met),
                     ('livneh', main_livneh_forcings),
                     ('livneh_vic', main_livneh_vic)]:
@@ -48,19 +50,21 @@ def main(kind, n_jobs, remap_to, verbose):
                 pp.pprint(files)
                 print(len(files))
 
-            # # download these files
-            # failures = Parallel(n_jobs=n_jobs, verbose=11)(delayed(
-            #     _maybe_download)(r, t) for (r, t) in files.items())
-            #
-            # failures = set(failures)
-            # print('FAILED TO DOWNLOAD:')
-            # pp.pprint(failures)
+            # download these files
+            failures = Parallel(n_jobs=n_jobs, verbose=11)(delayed(
+                _maybe_download)(r, t,
+                                 quick=quick) for (r, t) in files.items())
+
+            failures = set(failures)
+            print('FAILED TO DOWNLOAD:')
+            pp.pprint(failures)
 
             # remap these files
             if remap_to:
                 targets = files.values()
                 failures = Parallel(n_jobs=n_jobs, verbose=11)(delayed(
-                    _maybe_remap)(t, gridfile=remap_to) for t in targets)
+                    _maybe_remap)(t, gridfile=remap_to,
+                                  quick=quick) for t in targets)
 
                 failures = set(failures)
                 print('FAILED TO REMAP:')
@@ -204,9 +208,9 @@ def _make_drange_list(scen, with_md=True):
         return ['{:04d}'.format(y) for y in years]
 
 
-def file_qc_passes(f, kind='quick'):
+def file_qc_passes(f, quick=True):
     if os.path.isfile(f):
-        if kind == 'quick':
+        if quick:
             return True
         try:
             with xr.open_dataset(f,
@@ -215,20 +219,19 @@ def file_qc_passes(f, kind='quick'):
                                  decode_coords=False) as ds:
                 with open(os.devnull, "w") as buf:
                     ds.info(buf=buf)
-                if kind == 'full':
-                    ds = ds.load()
+                ds = ds.load()
                 return True
         except Exception as e:
             return False
     return False
 
 
-def _maybe_download(remote, target, remap_to=None, max_tries=5):
-    if not file_qc_passes(target, kind='full'):
+def _maybe_download(remote, target, quick=True, max_tries=5):
+    if not file_qc_passes(target, quick=quick):
         for a in range(max_tries):
             try:
                 download(remote, target)
-                assert file_qc_passes(target, kind='full')
+                assert file_qc_passes(target, quick=quick)
             except:
                 continue
             else:
@@ -241,12 +244,13 @@ def _maybe_download(remote, target, remap_to=None, max_tries=5):
         return ''
 
 
-def _maybe_remap(infile, gridfile, operator='remapcon'):
+def _maybe_remap(infile, gridfile, quick=True, operator='remapcon'):
     '''Remap infile using cdo'''
     try:
         remap_method = getattr(cdo, operator)
         outfile = _make_remap_output_filename_and_dir(infile)
-        remap_method(gridfile, input=infile, output=outfile)
+        if not file_qc_passes(outfile, quick=quick):
+            remap_method(gridfile, input=infile, output=outfile)
     except Exception as e:
         print(e)
         return infile
@@ -277,6 +281,8 @@ def download(remote, target):
         c.setopt(c.WRITEDATA, f)
         c.perform()
         c.close()
+    if os.stat(target).st_size == 0:
+        os.remove(target)
 
 
 if __name__ == "__main__":
