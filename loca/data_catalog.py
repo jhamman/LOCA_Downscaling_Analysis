@@ -26,6 +26,10 @@ LIVNEH_VIC_ROOT_DIR = '/glade2/scratch2/jhamman/LOCA_daily_VIC/vic_output/Livneh
 
 DEFAULT_MON_HYDRO_VARS = ['ET', 'total_runoff']
 DEFAULT_DAY_HYDRO_VARS = ['total_runoff']
+DEFAULT_RESOLUTION = '8th'
+
+KELVIN = 273.13
+SEC_PER_DAY = 86400
 
 
 def progress(r):
@@ -42,37 +46,56 @@ def _calc_total_runoff(ds):
     return ds['runoff'] + ds['baseflow']
 
 
-def resample_daily_data(ds, freq='MS'):
+# TODO --- make sure this is the common definition of t_mean
+def _calc_t_mean(ds):
+    if 't_mean' in ds:
+        return ds['t_mean']
+    return (ds['t_min'] + ds['t_max']) / 2.
+
+
+def resample_daily_data(ds, freq='MS', chunks=None):
     out = xr.Dataset()
 
     for name, da in ds.data_vars.items():
-        if name in ['ET', 'runoff', 'total_runoff', 'baseflow']:
+        if name in ['ET', 'runoff', 'total_runoff', 'baseflow', 'pcp']:
             out[name] = da.resample(time=freq).sum('time')
         else:
             out[name] = da.resample(time=freq).mean('time')
+
+    if chunks is not None:
+        out = out.chunk(chunks)
     return out
 
 
-def resample_monthly_data(ds, freq='MS'):
+def resample_monthly_data(ds, freq='MS', chunks=None):
     out = xr.Dataset()
-
     for name, da in ds.data_vars.items():
-        out[name] = da.resample(time=freq).mean('time')
+        if name in ['ET', 'runoff', 'total_runoff', 'baseflow', 'pcp']:
+            out[name] = da.resample(time=freq).sum('time')
+        else:
+            # TODO: weight by days in month, or sum over year
+            out[name] = da.resample(time=freq).mean('time')
 
+    if chunks is not None:
+        out = out.chunk(chunks)
     return out
 
 
 # Wrappers
 def load_monthly_historical_hydro_datasets(models=None,
                                            variables=DEFAULT_MON_HYDRO_VARS,
+                                           resolution=DEFAULT_RESOLUTION,
                                            **kwargs):
     print('load_monthly_historical_hydro_datasets', flush=True)
 
     data = load_monthly_cmip_hydro_datasets('historical', models=models,
+                                            resolution=resolution,
                                             **kwargs)
 
-    data['livneh'] = load_monthly_livneh_hydrology(**kwargs)
-    data['maurer'] = load_monthly_maurer_hydrology(**kwargs)
+    data['livneh'] = load_monthly_livneh_hydrology(resolution=resolution,
+                                                   **kwargs)
+    data['maurer'] = load_monthly_maurer_hydrology(resolution=resolution,
+                                                   **kwargs)
 
     # TODO: it would be better if we passed this info to the individual loaders
     out = {}
@@ -83,13 +106,17 @@ def load_monthly_historical_hydro_datasets(models=None,
 
 def load_daily_historical_hydro_datasets(models=None,
                                          variables=DEFAULT_DAY_HYDRO_VARS,
+                                         resolution=DEFAULT_RESOLUTION,
                                          **kwargs):
     print('load_daily_historical_hydro_datasets', flush=True)
 
     data = load_daily_cmip_hydro_datasets('historical', models=models,
+                                          resolution=resolution,
                                           **kwargs)
-    data['livneh'] = load_daily_livneh_hydrology(**kwargs)
-    data['maurer'] = load_daily_maurer_hydrology(**kwargs)
+    data['livneh'] = load_daily_livneh_hydrology(resolution=resolution,
+                                                 **kwargs)
+    data['maurer'] = load_daily_maurer_hydrology(resolution=resolution,
+                                                 **kwargs)
 
     # TODO: it would be better if we passed this info to the individual loaders
     for k, ds in data.items():
@@ -97,35 +124,44 @@ def load_daily_historical_hydro_datasets(models=None,
     return data
 
 
-def load_monthly_historical_met_datasets(models=None, **kwargs):
+def load_monthly_historical_met_datasets(resolution=DEFAULT_RESOLUTION,
+                                         models=None, **kwargs):
     print('load_monthly_historical_met_datasets', flush=True)
     data = load_monthly_cmip_met_datasets('historical', models=models,
+                                          resolution=resolution,
                                           **kwargs)
 
-    data['livneh'] = load_monthly_livneh_meteorology(**kwargs)
-    data['maurer'] = load_monthly_maurer_meteorology(**kwargs)
+    data['livneh'] = load_monthly_livneh_meteorology(resolution=resolution,
+                                                     **kwargs)
+    data['maurer'] = load_monthly_maurer_meteorology(resolution=resolution,
+                                                     **kwargs)
 
     return data
 
 
-def load_monthly_cmip_met_datasets(scen, models=None, **kwargs):
+def load_monthly_cmip_met_datasets(scen, models=None,
+                                   resolution=DEFAULT_RESOLUTION, **kwargs):
     print('load_monthly_cmip_met_datasets', flush=True)
     data = {}
     data['loca'] = load_monthly_loca_meteorology(scen=scen, models=models,
+                                                 resolution=resolution,
                                                  **kwargs)
     data['bcsd'] = load_monthly_bcsd_meteorology(scen=scen, models=models,
+                                                 resolution=resolution,
                                                  **kwargs)
     return data
 
 
 def load_monthly_cmip_hydro_datasets(scen, models=None,
                                      variables=DEFAULT_MON_HYDRO_VARS,
-                                     **kwargs):
+                                     resolution=DEFAULT_RESOLUTION, **kwargs):
     print('load_monthly_cmip_hydro_datasets', flush=True)
     data = {}
     data['loca'] = load_monthly_loca_hydrology(scen=scen, models=models,
+                                               resolution=resolution,
                                                **kwargs)
     data['bcsd'] = load_monthly_bcsd_hydrology(scen=scen, models=models,
+                                               resolution=resolution,
                                                **kwargs)
 
     # TODO: it would be better if we passed this info to the individual loaders
@@ -134,32 +170,55 @@ def load_monthly_cmip_hydro_datasets(scen, models=None,
     return data
 
 
-def load_daily_cmip_met_datasets(scen, models=None, **kwargs):
+def load_daily_cmip_met_datasets(scen, models=None,
+                                 resolution=DEFAULT_RESOLUTION, **kwargs):
     print('load_daily_cmip_met_datasets', flush=True)
     data = {}
     data['loca'] = load_daily_loca_meteorology(scen=scen, models=models,
+                                               resolution=resolution,
                                                **kwargs)
     data['bcsd'] = load_daily_bcsd_meteorology(scen=scen, models=models,
+                                               resolution=resolution,
                                                **kwargs)
     return data
 
 
-def load_daily_cmip_hydro_datasets(scen, models=None, **kwargs):
+def load_daily_cmip_hydro_datasets(scen, models=None,
+                                   resolution=DEFAULT_RESOLUTION, **kwargs):
     print('load_daily_cmip_hydro_datasets', flush=True)
     data = {}
     data['loca'] = load_daily_loca_hydrology(scen=scen, models=models,
+                                             resolution=resolution,
                                              **kwargs)
     data['bcsd'] = load_daily_bcsd_hydrology(scen=scen, models=models,
+                                             resolution=resolution,
                                              **kwargs)
     return data
 
 
+def drop_bound_varialbes(ds):
+    drops = []
+    for v in ['lon_bnds', 'lat_bnds', 'time_bnds']:
+        if v in ds or v in ds.coords:
+            drops.append(v)
+    return ds.drop(drops)
+
+
 # Individual datasets
-def load_daily_loca_hydrology(scen='historical', models=None, **kwargs):
+def load_daily_loca_hydrology(scen='historical', models=None,
+                              resolution=DEFAULT_RESOLUTION, **kwargs):
     print('load_daily_loca_hydrology', flush=True)
 
     def preproc(ds):
-        return ds.rename({'Time': 'time', 'Lat': 'lat', 'Lon': 'lon'})
+        d = {}
+        for k, v in (('Time', 'time'), ('latitude', 'lat'),
+                     ('longitude', 'lon')):
+            if k in ds or k in ds.coords:
+                d[k] = v
+
+        ds = drop_bound_varialbes(ds)
+
+        return ds.rename(d)
 
     if models is None:
         models = os.listdir(LOCA_VIC_ROOT_DIR)
@@ -170,10 +229,12 @@ def load_daily_loca_hydrology(scen='historical', models=None, **kwargs):
 
     ds_list = []
     for m in progress(models):
+        if resolution == '16th':
+            resolution = ''
         fpath = os.path.join(LOCA_VIC_ROOT_DIR, m,
-                             f'vic_output.{scen}.netcdf', '*nc')
-        ds_list.append(xr.open_mfdataset(fpath, preprocess=preproc,
-                       **kwargs))
+                             f'vic_output.{scen}.netcdf', resolution, '*nc')
+
+        ds_list.append(xr.open_mfdataset(fpath, preprocess=preproc, **kwargs))
 
     ds = xr.concat(ds_list, dim=xr.Variable('gcm', models))
 
@@ -182,27 +243,23 @@ def load_daily_loca_hydrology(scen='historical', models=None, **kwargs):
     return ds
 
 
-def load_monthly_loca_hydrology(scen='historical', models=None, **kwargs):
+def load_monthly_loca_hydrology(scen='historical', models=None,
+                                resolution=DEFAULT_RESOLUTION, **kwargs):
     print('load_monthly_loca_hydrology', flush=True)
     # for now, just load daily and resample imediately
-    ds = load_daily_loca_hydrology(scen=scen, models=models, **kwargs)
+    ds = load_daily_loca_hydrology(scen=scen, models=models,
+                                   resolution=resolution, **kwargs)
     ds = resample_daily_data(ds)
     return ds
 
 
-def load_monthly_maurer_hydrology(**kwargs):
+def load_monthly_maurer_hydrology(resolution=DEFAULT_RESOLUTION, **kwargs):
     print('load_monthly_maurer_hydrology', flush=True)
-
-    # def preproc(ds):
-    #     return ds
-
+    if resolution != '8th':
+        raise NotImplementedError('Maurer Hydrology has not been remapped to '
+                                  'any other resolution')
     fpath = os.path.join(MAURER_VIC_ROOT_DIR, '*nc')
-    # print(fpath)
-    #
-    # ds = xr.auto_combine([preproc(xr.open_dataset(f, **kwargs))
-    #                       for f in glob.glob(fpath)])
-
-    ds = xr.open_mfdataset(fpath, **kwargs)
+    ds = xr.open_mfdataset(fpath, preproc=drop_bound_varialbes, **kwargs)
 
     return ds.rename({'longitude': 'lon', 'latitude': 'lat',
                       'et': 'ET', 'swe': 'SWE', 'surface_runoff': 'runoff'})
@@ -214,11 +271,14 @@ def load_daily_maurer_hydrology(**kwargs):
 
 
 def load_daily_loca_meteorology(scen='historical', models=None,
-                                resolution='16th', **kwargs):
+                                resolution=DEFAULT_RESOLUTION, **kwargs):
     print('load_daily_loca_meteorology', flush=True)
 
     var = '*'
     ens = '*'
+
+    def preproc(ds):
+        return drop_bound_varialbes(ds)
 
     if models is None:
         models = os.listdir(LOC_MET_ROOT_DIR)
@@ -228,24 +288,28 @@ def load_daily_loca_meteorology(scen='historical', models=None,
     for m in progress(models):
         fpath = os.path.join(LOC_MET_ROOT_DIR, m, resolution, scen,
                              ens, var, '*nc')
-        ds_list.append(xr.open_mfdataset(fpath, **kwargs))
+        ds_list.append(xr.open_mfdataset(fpath, preprocess=preproc, **kwargs))
 
     ds = xr.concat(ds_list, dim=xr.Variable('gcm', models))
 
-    ds = ds.rename({'pr': 'pcp', 'tasmin': 't_min', 'tasmax': 't_max'})
+    if 'longitude' in ds.coords:
+        ds = ds.rename({'longitude': 'lon', 'latitude': 'lat', 'pr': 'pcp',
+                        'tasmin': 't_min', 'tasmax': 't_max'})
+    else:
+        ds = ds.rename({'pr': 'pcp', 'tasmin': 't_min', 'tasmax': 't_max'})
 
-    ds['t_mean'] = (ds['t_min'] + ds['t_max']) / 2.
+    ds['t_mean'] = (ds['t_min'] + ds['t_max']) / 2. - KELVIN  # K --> C
+    ds['pcp'] = ds['pcp'] * SEC_PER_DAY  # kg m-2 s-1 --> mm/d
 
     return ds
 
 
 def load_monthly_loca_meteorology(scen='historical', models=None,
-                                  resolution='16th', **kwargs):
+                                  resolution=DEFAULT_RESOLUTION, **kwargs):
     print('load_monthly_loca_meteorology', flush=True)
     # for now, just load daily and resample imediately
     ds = load_daily_loca_meteorology(scen=scen, models=models,
                                      resolution=resolution, **kwargs)
-    ds = ds.drop(['lon_bnds', 'lat_bnds', 'time_bnds'])
     ds = resample_daily_data(ds)
     return ds
 
@@ -269,7 +333,11 @@ def filter_files(files, valid_years):
     return list(set(out))
 
 
-def load_bcsd_dataset(root, scen='rcp85', models=None, **kwargs):
+def load_bcsd_dataset(root, scen='rcp85', models=None,
+                      resolution=DEFAULT_RESOLUTION, **kwargs):
+    if resolution != '8th':
+        raise NotImplementedError('BCSD data has not been remapped to a '
+                                  'resolution other than 1/8th degree')
     print('load_bcsd_dataset', flush=True)
     valid_years = get_valid_years(scen)
     if 'hist' in scen:
@@ -296,49 +364,62 @@ def load_bcsd_dataset(root, scen='rcp85', models=None, **kwargs):
 
         files = filter_files(files, valid_years)
 
-        ds_list.append(xr.open_mfdataset(files, **kwargs))
+        ds_list.append(xr.open_mfdataset(files,
+                                         preprocess=drop_bound_varialbes,
+                                         **kwargs))
 
     ds = xr.concat(ds_list, dim=xr.Variable('gcm', models))
 
     return ds
 
 
-def load_daily_bcsd_meteorology(scen='rcp85', models=None, **kwargs):
+def load_daily_bcsd_meteorology(scen='rcp85', models=None,
+                                resolution=DEFAULT_RESOLUTION, **kwargs):
     print('load_daily_bcsd_meteorology', flush=True)
 
     ds = load_bcsd_dataset(BCSD_MET_ROOT_DIR, scen=scen, models=models,
-                           **kwargs)
+                           resolution=resolution, **kwargs)
     return ds
 
 
-def load_monthly_bcsd_meteorology(scen='rcp85', models=None, **kwargs):
+def load_monthly_bcsd_meteorology(scen='rcp85', models=None,
+                                  resolution=DEFAULT_RESOLUTION, **kwargs):
     print('load_monthly_bcsd_meteorology', flush=True)
 
     ds = load_bcsd_dataset(BCSD_MET_MON_ROOT_DIR, scen=scen, models=models,
-                           **kwargs)
-    return ds.rename({'pr': 'pcp', 'tasmin': 't_min', 'tasmax': 't_max'})
+                           resolution=resolution, **kwargs)
+
+    return ds.rename({'latitude': 'lat', 'longitude': 'lon',
+                      'pr': 'pcp', 'tasmin': 't_min',
+                      'tasmax': 't_max', 'tas': 't_mean'})
 
 
-def load_daily_bcsd_hydrology(scen='rcp85', models=None, **kwargs):
+def load_daily_bcsd_hydrology(scen='rcp85', models=None,
+                              resolution=DEFAULT_RESOLUTION, **kwargs):
     print('load_daily_bcsd_hydrology', flush=True)
 
     ds = load_bcsd_dataset(BCSD_VIC_ROOT_DIR, scen=scen, models=models,
-                           **kwargs)
+                           resolution=resolution, **kwargs)
     return ds.rename({'longitude': 'lon', 'latitude': 'lat',
                       'total runoff': 'total_runoff'})
 
 
-def load_monthly_bcsd_hydrology(scen='rcp85', models=None, **kwargs):
+def load_monthly_bcsd_hydrology(scen='rcp85', models=None,
+                                resolution=DEFAULT_RESOLUTION, **kwargs):
     print('load_monthly_bcsd_hydrology', flush=True)
 
     ds = load_bcsd_dataset(BCSD_VIC_MON_ROOT_DIR, scen=scen, models=models,
-                           **kwargs)
+                           resolution=resolution, **kwargs)
     return ds.rename({'longitude': 'lon', 'latitude': 'lat',
                       'et': 'ET', 'swe': 'SWE'})
 
 
-def load_daily_maurer_meteorology(**kwargs):
+def load_daily_maurer_meteorology(resolution=DEFAULT_RESOLUTION, **kwargs):
     print('load_daily_maurer_meteorology', flush=True)
+
+    if resolution != '8th':
+        raise NotImplementedError('Maurer data has not been remapped to a '
+                                  'resolution other than 1/8th degree')
 
     def preproc(ds):
         if 'latitude' in ds:
@@ -353,8 +434,12 @@ def load_daily_maurer_meteorology(**kwargs):
     fpath = os.path.join(MAURER_MET_ROOT_DIR, var, '*nc')
     ds = xr.open_mfdataset(fpath, preprocess=preproc, **kwargs)
 
-    return ds.rename({'pr': 'pcp', 'tasmin': 't_min',
-                      'tasmax': 't_max', 'tas': 't_mean'})
+    ds = ds.rename({'pr': 'pcp', 'tasmin': 't_min',
+                    'tasmax': 't_max'})
+
+    ds['t_mean'] = _calc_t_mean(ds)
+
+    return ds
 
 
 def load_monthly_maurer_meteorology(**kwargs):
@@ -363,39 +448,44 @@ def load_monthly_maurer_meteorology(**kwargs):
     return resample_daily_data(ds)
 
 
-def load_daily_livneh_meteorology(resolution='16th', **kwargs):
+def load_daily_livneh_meteorology(resolution=DEFAULT_RESOLUTION, **kwargs):
     print('load_daily_livneh_meteorology', flush=True)
     if resolution == '16th':
-        fpath = os.path.join(LIVNEH_MET_ROOT_DIR, '*nc')
-    else:
-        fpath = os.path.join(LIVNEH_MET_ROOT_DIR, resolution, '*nc')
+        resolution = ''
+    fpath = os.path.join(LIVNEH_MET_ROOT_DIR, resolution, '*nc')
     ds = xr.open_mfdataset(fpath, **kwargs)
-    ds = ds.rename({'Prec': 'pcp', 'Tmin': 't_min', 'Tmax': 't_max'})
-    ds['t_mean'] = (ds['t_min'] + ds['t_max']) / 2.
-    return ds
+    if 'longitude' in ds.coords:
+        ds = ds.rename({'latitude': 'lat', 'longitude': 'lon',
+                        'Prec': 'pcp', 'Tmin': 't_min', 'Tmax': 't_max'})
+    else:
+        ds = ds.rename({'Prec': 'pcp', 'Tmin': 't_min', 'Tmax': 't_max'})
+    ds['t_mean'] = _calc_t_mean(ds)
+    return ds[['t_mean', 'pcp']]
 
 
-def load_monthly_livneh_meteorology(resolution='16th', **kwargs):
+def load_monthly_livneh_meteorology(resolution=DEFAULT_RESOLUTION, **kwargs):
     print('load_monthly_livneh_meteorology', flush=True)
     # for now, just load daily and resample imediately
     ds = load_daily_livneh_meteorology(resolution=resolution, **kwargs)
-    print('WARNING: why does the livneh met data need to be sorted?')
-    ds = resample_daily_data(ds.sortby('time'))
+    ds = resample_daily_data(ds)
     return ds
 
 
-def load_daily_livneh_hydrology(resolution='16th', **kwargs):
+def load_daily_livneh_hydrology(resolution=DEFAULT_RESOLUTION, **kwargs):
     print('load_daily_livneh_hydrology', flush=True)
     if resolution == '16th':
-        fpath = os.path.join(LIVNEH_VIC_ROOT_DIR, '*nc')
-    else:
-        fpath = os.path.join(LIVNEH_VIC_ROOT_DIR, resolution, '*nc')
+        resolution = ''
+    fpath = os.path.join(LIVNEH_VIC_ROOT_DIR, resolution, '*nc')
     ds = xr.open_mfdataset(fpath, **kwargs)
     ds['total_runoff'] = _calc_total_runoff(ds)
-    return ds.rename({'Lat': 'lat', 'Lon': 'lon', 'Time': 'time'})
+    if 'Lat' in ds.coords:
+        ds = ds.rename({'Lat': 'lat', 'Lon': 'lon', 'Time': 'time'})
+    else:
+        ds = ds.rename({'latitude': 'lat', 'longitude': 'lon', 'Time': 'time'})
+    return ds
 
 
-def load_monthly_livneh_hydrology(resolution='16th', **kwargs):
+def load_monthly_livneh_hydrology(resolution=DEFAULT_RESOLUTION, **kwargs):
     print('load_monthly_livneh_hydrology', flush=True)
     # for now, just load daily and resample imediately
     ds = load_daily_livneh_hydrology(resolution=resolution, **kwargs)
