@@ -27,3 +27,14 @@ def dpm_from_time_var(time_var):
         dpm = pd.Series(dpm_from_index(time_var), index=time_var)
 
     return dpm
+
+
+def calc_change(hist_mean, rcp_mean, pct=False):
+    '''calculate the change signal, if pct is True, return the percent change'''
+
+    if pct:
+        diff = 100. * (rcp_mean - hist_mean) / hist_mean
+    else:
+        diff = rcp_mean - hist_mean
+
+    return diff
