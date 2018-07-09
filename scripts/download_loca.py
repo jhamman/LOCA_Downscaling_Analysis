@@ -219,6 +219,11 @@ def file_qc_passes(f, quick=True):
                                  decode_coords=False) as ds:
                 with open(os.devnull, "w") as buf:
                     ds.info(buf=buf)
+
+                # Temporary check of dimensions
+                # TODO: Remove me
+                if ds.dims['latitude'] != 222 or ds.dims['longitude'] != 462:
+                    return False
                 ds = ds.load()
                 return True
         except Exception as e:
@@ -246,6 +251,10 @@ def _maybe_download(remote, target, quick=True, max_tries=5):
 
 def _maybe_remap(infile, gridfile, quick=True, operator='remapcon'):
     '''Remap infile using cdo'''
+    # Temporary check of dimensions
+    # TODO: Remove me
+    quick = False
+
     try:
         remap_method = getattr(cdo, operator)
         outfile = _make_remap_output_filename_and_dir(infile)

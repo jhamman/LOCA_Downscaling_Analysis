@@ -11,6 +11,9 @@ dependencies:
   - bottleneck
   - netcdf4
   - h5netcdf
+  - dask
+  - distributed
+  - xarray
   # visualization
   - matplotlib=2
   - cartopy
@@ -22,7 +25,7 @@ dependencies:
   - jupyter_dashboards
   - ipywidgets
   - notebook
-# misc
+  # misc
   - click
   - cloudpickle
   - msgpack-python
@@ -34,7 +37,4 @@ dependencies:
   - tornado
   - zict
   - pip:
-    - pytest-cov
-    - git+https://github.com/dask/dask.git
-    - git+https://github.com/dask/distributed.git
-    - git+https://github.com/pydata/xarray.git
+    - dask_jobqueue

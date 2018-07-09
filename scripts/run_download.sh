@@ -34,11 +34,11 @@ REMAP_TARGET=/glade/p/ral/RHAP/jhamman/inputdata/domains/domain.vic.conus0.0125d
 cd /glade/p/work/jhamman/loca/scripts
 
 # run the LOCA executable
-./download_loca.py --quick --kind livneh --n_jobs 8 --remap_to $REMAP_TARGET > $LOG/livneh.txt 2>&1 &
-./download_loca.py --quick --kind livneh_vic --n_jobs 8 --remap_to $REMAP_TARGET > $LOG/livneh_vic.txt 2>&1 &
-
 ./download_loca.py --quick --kind met --n_jobs 16 --remap_to $REMAP_TARGET > $LOG/loca.txt 2>&1 &
 ./download_loca.py --quick --kind vic --n_jobs 16 --remap_to $REMAP_TARGET > $LOG/loca_vic.txt 2>&1 &
+
+./download_loca.py --quick --kind livneh --n_jobs 8 --remap_to $REMAP_TARGET > $LOG/livneh.txt 2>&1 &
+./download_loca.py --quick --kind livneh_vic --n_jobs 8 --remap_to $REMAP_TARGET > $LOG/livneh_vic.txt 2>&1 &
 
 wait
 

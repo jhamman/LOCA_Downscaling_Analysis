@@ -1,5 +1,6 @@
 
 import os
+import warnings
 import glob
 
 import xarray as xr
@@ -63,7 +64,7 @@ def resample_daily_data(ds, freq='MS', chunks=None):
             out[name] = da.resample(time=freq).mean('time')
 
     if chunks is not None:
-        out = out.chunk(chunks)
+        out = out.persist().chunk(chunks)
     return out
 
 
@@ -77,7 +78,7 @@ def resample_monthly_data(ds, freq='MS', chunks=None):
             out[name] = da.resample(time=freq).mean('time')
 
     if chunks is not None:
-        out = out.chunk(chunks)
+        out = out.persist().chunk(chunks)
     return out
 
 
@@ -228,15 +229,20 @@ def load_daily_loca_hydrology(scen='historical', models=None,
         models.sort()
 
     ds_list = []
+    models_list = []
     for m in progress(models):
         if resolution == '16th':
             resolution = ''
         fpath = os.path.join(LOCA_VIC_ROOT_DIR, m,
                              f'vic_output.{scen}.netcdf', resolution, '*nc')
+        try:
+            ds_list.append(xr.open_mfdataset(
+                fpath, preprocess=preproc, **kwargs))
+            models_list.append(m)
+        except OSError:
+            print('skipping %s' % m)
 
-        ds_list.append(xr.open_mfdataset(fpath, preprocess=preproc, **kwargs))
-
-    ds = xr.concat(ds_list, dim=xr.Variable('gcm', models))
+    ds = xr.concat(ds_list, dim=xr.Variable('gcm', models_list))
 
     ds['total_runoff'] = _calc_total_runoff(ds)
 
@@ -259,7 +265,7 @@ def load_monthly_maurer_hydrology(resolution=DEFAULT_RESOLUTION, **kwargs):
         raise NotImplementedError('Maurer Hydrology has not been remapped to '
                                   'any other resolution')
     fpath = os.path.join(MAURER_VIC_ROOT_DIR, '*nc')
-    ds = xr.open_mfdataset(fpath, preproc=drop_bound_varialbes, **kwargs)
+    ds = xr.open_mfdataset(fpath, preprocess=drop_bound_varialbes, **kwargs)
 
     return ds.rename({'longitude': 'lon', 'latitude': 'lat',
                       'et': 'ET', 'swe': 'SWE', 'surface_runoff': 'runoff'})
@@ -285,12 +291,18 @@ def load_daily_loca_meteorology(scen='historical', models=None,
         models.sort()
 
     ds_list = []
+    models_list = []
     for m in progress(models):
         fpath = os.path.join(LOC_MET_ROOT_DIR, m, resolution, scen,
                              ens, var, '*nc')
-        ds_list.append(xr.open_mfdataset(fpath, preprocess=preproc, **kwargs))
+        try:
+            ds_list.append(
+                xr.open_mfdataset(fpath, preprocess=preproc, **kwargs))
+            models_list.append(m)
+        except OSError:
+            print('skipping %s' % m)
 
-    ds = xr.concat(ds_list, dim=xr.Variable('gcm', models))
+    ds = xr.concat(ds_list, dim=xr.Variable('gcm', models_list))
 
     if 'longitude' in ds.coords:
         ds = ds.rename({'longitude': 'lon', 'latitude': 'lat', 'pr': 'pcp',
@@ -350,25 +362,31 @@ def load_bcsd_dataset(root, scen='rcp85', models=None,
         models = []
         for m in _models:
             name, scen, ens = m.split('_')
-            models.append()
+            models.append(name)
         models = list(set(models))
 
     ds_list = []
+    models_list = []
     for m in progress(models):
-        m = m.lower()  # bcsd uses lower case naming
-        fpath = os.path.join(root, f'{m}_{scen}_r*', '*nc')
+        ml = m.lower()  # bcsd uses lower case naming
+        fpath = os.path.join(root, f'{ml}_{scen}_r*', '*nc')
         files = glob.glob(fpath)
 
         if not files:
-            raise ValueError('no files to open: %s' % fpath)
+            warnings.warn('no files to open: %s' % fpath)
+            models.remove(m)
+            continue
 
         files = filter_files(files, valid_years)
+        try:
+            ds_list.append(xr.open_mfdataset(files,
+                                             preprocess=drop_bound_varialbes,
+                                             **kwargs))
+            models_list.append(m)
+        except OSError:
+            print('skipping %s' % m)
 
-        ds_list.append(xr.open_mfdataset(files,
-                                         preprocess=drop_bound_varialbes,
-                                         **kwargs))
-
-    ds = xr.concat(ds_list, dim=xr.Variable('gcm', models))
+    ds = xr.concat(ds_list, dim=xr.Variable('gcm', models_list))
 
     return ds
 
