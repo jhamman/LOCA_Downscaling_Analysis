@@ -10,7 +10,8 @@ import click
 try:
     from cdo import Cdo
     cdo = Cdo()
-except:
+    cdo.debug = True
+except ImportError:
     cdo = None
 
 pp = pprint.PrettyPrinter(indent=2)
@@ -19,12 +20,14 @@ loca_root = 'ftp://gdo-dcp.ucllnl.org/pub/'
 met_root = 'dcp/archive/cmip5/loca/LOCA_2016-04-02/'
 vic_root = '..../data/LOCA_VIC_dpierce_2017-02-28/'
 met_template = '{var}_day_{mod}_{scen}_{ens}_{drange}.LOCA_2016-04-02.16th.nc'
-met_target = '/glade2/scratch2/jhamman/LOCA_daily/met_data'
+met_target = '/glade/p/ral/hap/common_data/LOCA/met'
 vic_template = '{var}.{year}.v0.nc'
-vic_target = '/glade2/scratch2/jhamman/LOCA_daily_VIC/vic_output/'
+vic_target = '/glade/p/ral/hap/common_data/LOCA/vic'
 livneh_met_root = 'dcp/archive/cmip5/loca/livneh2014.1_16deg/netcdf/daily/'
 livneh_met_template = 'livneh_NAmerExt_15Oct2014.{0:04d}{1:02d}.nc'
-liven_met_target = '/glade2/scratch2/jhamman/GARD_inputs/livneh2014.1_16deg'
+liven_met_target = '/glade/p/ral/hap/common_data/Livneh_met/livneh2014.1_16deg'
+
+FORCE_REMAP = True
 
 variables = ['runoff', 'baseflow', 'SWE', 'ET', 'windspeed',
              'shortwave_in']
@@ -52,23 +55,23 @@ def main(kind, n_jobs, remap_to, verbose, quick):
 
             # download these files
             failures = Parallel(n_jobs=n_jobs, verbose=11)(delayed(
-                _maybe_download)(r, t,
+                _maybe_download)(r, t, gridfile=remap_to,
                                  quick=quick) for (r, t) in files.items())
 
             failures = set(failures)
             print('FAILED TO DOWNLOAD:')
             pp.pprint(failures)
 
-            # remap these files
-            if remap_to:
-                targets = files.values()
-                failures = Parallel(n_jobs=n_jobs, verbose=11)(delayed(
-                    _maybe_remap)(t, gridfile=remap_to,
-                                  quick=quick) for t in targets)
-
-                failures = set(failures)
-                print('FAILED TO REMAP:')
-                pp.pprint(failures)
+            # # remap these files
+            # if remap_to:
+            #     targets = files.values()
+            #     failures = Parallel(n_jobs=n_jobs, verbose=11)(delayed(
+            #         _maybe_remap)(t, gridfile=remap_to,
+            #                       quick=quick) for t in targets)
+            #
+            #     failures = set(failures)
+            #     print('FAILED TO REMAP:')
+            #     pp.pprint(failures)
 
 
 def main_met():
@@ -129,9 +132,10 @@ def main_met():
                                                 drange=drange, ens=ens)
                     remote = os.path.join(loca_root, met_root, model, '16th',
                                           scen, ens, var, fname)
-                    target = os.path.join(met_target, model, '16th',
-                                          scen, ens, var, fname)
-
+                    target_dir = os.path.join(met_target, model, '16th',
+                                              scen, ens, var)
+                    os.makedirs(target_dir, exist_ok=True)
+                    target = os.path.join(target_dir, fname)
                     to_download[remote] = target
 
     return to_download
@@ -219,11 +223,6 @@ def file_qc_passes(f, quick=True):
                                  decode_coords=False) as ds:
                 with open(os.devnull, "w") as buf:
                     ds.info(buf=buf)
-
-                # Temporary check of dimensions
-                # TODO: Remove me
-                if ds.dims['latitude'] != 222 or ds.dims['longitude'] != 462:
-                    return False
                 ds = ds.load()
                 return True
         except Exception as e:
@@ -231,34 +230,35 @@ def file_qc_passes(f, quick=True):
     return False
 
 
-def _maybe_download(remote, target, quick=True, max_tries=5):
+def _maybe_download(remote, target, gridfile=None, quick=True, max_tries=5):
     if not file_qc_passes(target, quick=quick):
         for a in range(max_tries):
             try:
+                path = os.path.dirname(target)
+                os.makedirs(path, exist_ok=True)
                 download(remote, target)
                 assert file_qc_passes(target, quick=quick)
-            except:
+                break
+            except Exception as e:
+                print(e)
                 continue
-            else:
-                print('downloaded %s' % target)
-                return ''
         else:
             return remote
-    else:
-        print('downloaded %s' % target)
-        return ''
+    if gridfile is not None:
+        return _maybe_remap(target, gridfile, quick=quick)
 
 
 def _maybe_remap(infile, gridfile, quick=True, operator='remapcon'):
     '''Remap infile using cdo'''
     # Temporary check of dimensions
-    # TODO: Remove me
-    quick = False
-
     try:
+        if cdo is None:
+            raise RuntimeError("we were note able to load cdo")
         remap_method = getattr(cdo, operator)
         outfile = _make_remap_output_filename_and_dir(infile)
         if not file_qc_passes(outfile, quick=quick):
+            remap_method(gridfile, input=infile, output=outfile)
+        elif FORCE_REMAP:
             remap_method(gridfile, input=infile, output=outfile)
     except Exception as e:
         print(e)

@@ -7,23 +7,23 @@ import xarray as xr
 
 # TODO: make this more configurable
 # LOCA
-LOC_MET_ROOT_DIR = '/glade2/scratch2/jhamman/LOCA_daily/met_data'
-LOCA_VIC_ROOT_DIR = '/glade/scratch/jhamman/LOCA_daily_VIC/vic_output'
+LOC_MET_ROOT_DIR = '/glade/p/ral/hap/common_data/LOCA/met'
+LOCA_VIC_ROOT_DIR = '/glade/p/ral/hap/common_data/LOCA/vic'
 
 # BCSD
-BCSD_MET_ROOT_DIR = '/glade/scratch/jhamman/reruns/BCSD_daily_forc_nc'
-BCSD_VIC_ROOT_DIR = '/glade/scratch/jhamman/reruns/BCSD_daily_VIC_nc'
+BCSD_MET_ROOT_DIR = '/glade/p/ral/hap/common_data/BCSD/BCSD_daily_forc_nc'
+BCSD_VIC_ROOT_DIR = '/glade/p/ral/hap/common_data/BCSD/BCSD_daily_VIC_nc'
 
-BCSD_MET_MON_ROOT_DIR = '/glade/scratch/jhamman/reruns/BCSD_mon_forc_nc'
-BCSD_VIC_MON_ROOT_DIR = '/glade/scratch/jhamman/reruns/BCSD_mon_VIC_nc'
+BCSD_MET_MON_ROOT_DIR = '/glade/p/ral/hap/common_data/BCSD/BCSD_mon_forc_nc'
+BCSD_VIC_MON_ROOT_DIR = '/glade/p/ral/hap/common_data/BCSD/BCSD_mon_VIC_nc'
 
 # Maurer
-MAURER_MET_ROOT_DIR = '/glade/p/ral/RHAP/jhamman/inputdata/metdata/maurer'
-MAURER_VIC_ROOT_DIR = '/glade/scratch/jhamman/reruns/historical_mon_VIC'
+MAURER_MET_ROOT_DIR = '/glade/p/ral/hap/common_data/Maurer_met/'
+MAURER_VIC_ROOT_DIR = '/glade/p/ral/hap/common_data/BCSD/historical_mon_VIC'
 
 # Livneh
-LIVNEH_MET_ROOT_DIR = '/glade2/scratch2/jhamman/GARD_inputs/livneh2014.1_16deg'
-LIVNEH_VIC_ROOT_DIR = '/glade2/scratch2/jhamman/LOCA_daily_VIC/vic_output/Livneh_L14_CONUS'
+LIVNEH_MET_ROOT_DIR = '/glade/p/ral/hap/common_data/Livneh_met/livneh2014.1_16deg/'
+LIVNEH_VIC_ROOT_DIR = '/glade/p/ral/hap/common_data/LOCA/vic/Livneh_L14_CONUS/'
 
 DEFAULT_MON_HYDRO_VARS = ['ET', 'total_runoff']
 DEFAULT_DAY_HYDRO_VARS = ['total_runoff']
@@ -37,7 +37,7 @@ def progress(r):
     try:
         from tqdm import tqdm
         return tqdm(r)
-    except:
+    except ImportError:
         return r
 
 
@@ -284,6 +284,8 @@ def load_daily_loca_meteorology(scen='historical', models=None,
     ens = '*'
 
     def preproc(ds):
+        if 'longitude' in ds.coords:
+            ds = ds.rename({'longitude': 'lon', 'latitude': 'lat'})
         return drop_bound_varialbes(ds)
 
     if models is None:
@@ -498,8 +500,10 @@ def load_daily_livneh_hydrology(resolution=DEFAULT_RESOLUTION, **kwargs):
     ds['total_runoff'] = _calc_total_runoff(ds)
     if 'Lat' in ds.coords:
         ds = ds.rename({'Lat': 'lat', 'Lon': 'lon', 'Time': 'time'})
-    else:
+    elif 'latitude' in ds.coords:
         ds = ds.rename({'latitude': 'lat', 'longitude': 'lon', 'Time': 'time'})
+    elif 'Time' in ds.coords:
+        ds = ds.rename({'Time': 'time'})
     return ds
 
 
