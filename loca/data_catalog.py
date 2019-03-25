@@ -18,7 +18,7 @@ BCSD_MET_MON_ROOT_DIR = '/glade/p/ral/hap/common_data/BCSD/BCSD_mon_forc_nc'
 BCSD_VIC_MON_ROOT_DIR = '/glade/p/ral/hap/common_data/BCSD/BCSD_mon_VIC_nc'
 
 # Maurer
-MAURER_MET_ROOT_DIR = '/glade/p/ral/hap/common_data/Maurer_met/'
+MAURER_MET_ROOT_DIR = '/glade/p/ral/hap/common_data/Maurer_met_full/'
 MAURER_VIC_ROOT_DIR = '/glade/p/ral/hap/common_data/BCSD/historical_mon_VIC'
 
 # Livneh
@@ -408,6 +408,7 @@ def load_monthly_bcsd_meteorology(scen='rcp85', models=None,
 
     ds = load_bcsd_dataset(BCSD_MET_MON_ROOT_DIR, scen=scen, models=models,
                            resolution=resolution, **kwargs)
+    ds = ds.resample(time='MS').first(skipna=False)
 
     return ds.rename({'latitude': 'lat', 'longitude': 'lon',
                       'pr': 'pcp', 'tasmin': 't_min',
@@ -430,6 +431,7 @@ def load_monthly_bcsd_hydrology(scen='rcp85', models=None,
 
     ds = load_bcsd_dataset(BCSD_VIC_MON_ROOT_DIR, scen=scen, models=models,
                            resolution=resolution, **kwargs)
+    ds = ds.resample(time='MS').first(skipna=False)
     return ds.rename({'longitude': 'lon', 'latitude': 'lat',
                       'et': 'ET', 'swe': 'SWE'})
 
@@ -445,7 +447,10 @@ def load_daily_maurer_meteorology(resolution=DEFAULT_RESOLUTION, **kwargs):
         if 'latitude' in ds:
             # 1 or 2 files have different coordinate data so we fix that here
             ds = ds.rename({'latitude': 'lat', 'longitude': 'lon'})
-            ds = ds.drop(['longitude_bnds', 'latitude_bnds'])
+        for var in ['bounds_latitude', 'bounds_longitude',
+                    'longitude_bnds', 'latitude_bnds']:
+            if var in ds:
+                ds = ds.drop(var)
         ds['lon'] = ds['lon'].where(ds['lon'] <= 180, ds['lon'] - 360)
         return ds
 
@@ -455,9 +460,7 @@ def load_daily_maurer_meteorology(resolution=DEFAULT_RESOLUTION, **kwargs):
     ds = xr.open_mfdataset(fpath, preprocess=preproc, **kwargs)
 
     ds = ds.rename({'pr': 'pcp', 'tasmin': 't_min',
-                    'tasmax': 't_max'})
-
-    ds['t_mean'] = _calc_t_mean(ds)
+                    'tasmax': 't_max', 'tas': 't_mean'})
 
     return ds
 
